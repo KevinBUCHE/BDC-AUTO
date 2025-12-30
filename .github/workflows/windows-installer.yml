@@ -1,0 +1,53 @@
+name: Windows Installer
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build portable (PyInstaller)
+        run: |
+          python -m PyInstaller --noconfirm --noconsole --name "BDC Generator" main.py --add-data "config.json;." --add-data "assets;assets"
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build installer
+        run: |
+          ISCC installer\\bdc_generator.iss
+
+      - name: Zip portable build
+        run: |
+          Compress-Archive -Path \"dist/BDC Generator/*\" -DestinationPath \"dist/BDC_Generator_Portable.zip\"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BDC_Generator_Installer
+          path: installer/Output/BDC_Generator_Setup.exe
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BDC_Generator_Portable
+          path: dist/BDC_Generator_Portable.zip

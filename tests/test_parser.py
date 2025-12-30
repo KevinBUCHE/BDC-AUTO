@@ -1,10 +1,9 @@
 from pathlib import Path
 import json
 
-from services import devis_parser
+from services import devis_parser, sanitize
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
-
 
 
 def load_cases():
@@ -23,6 +22,7 @@ def test_parser_against_fixtures():
     for case_id, source_path, expected_path in cases:
         expected = json.loads(expected_path.read_text(encoding="utf-8"))
         parsed, warnings = devis_parser.parse_devis(source_path)
+        sanitized, _ = sanitize.apply_sanitize(parsed, {"riaux_blacklist": []})
 
         for key in [
             "devis_full",
@@ -33,6 +33,6 @@ def test_parser_against_fixtures():
             "prestations_ht",
             "pose_sold",
         ]:
-            assert parsed.get(key) == expected.get(key), f"{case_id}: {key} mismatch"
+            assert sanitized.get(key) == expected.get(key), f"{case_id}: {key} mismatch"
 
         assert isinstance(warnings, list)

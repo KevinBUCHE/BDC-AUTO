@@ -10,6 +10,7 @@ venv/
 build/
 dist/
 release/
+installer/Output/
 .pytest_cache/
 .eggs/
 *.egg-info/

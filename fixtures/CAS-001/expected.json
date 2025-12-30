@@ -2,7 +2,7 @@
   "source_pdf": "fixtures/CAS-001/source.pdf",
   "devis_full": "SRX2512AFF003105",
   "ref_affaire": "AFF-42",
-  "client_nom": "Client Demo",
+  "client_nom": "CLIENT DEMO",
   "commercial_nom": "Commercial Test",
   "fourniture_ht": "9 979,94",
   "prestations_ht": "1 200,00",
@@ -13,9 +13,12 @@
   "esc_finition_structure": "Thermolaqué",
   "esc_finition_mains_courante": "Brossé",
   "esc_finition_contremarche": "Peint",
+  "esc_main_courante": "Inox",
+  "esc_nez_de_marche": "Profil alu",
+  "esc_poteaux_depart": "Poteau carré",
   "esc_tete_de_poteau": "Tête standard",
   "remplissage_rampant": "Barreaudage vertical",
-  "remplissage_etage": "",
-  "remplissage_soubassement": "",
+  "remplissage_etage": "Barreaudage horizontal",
+  "remplissage_soubassement": "Vitre claire",
   "parse_warning": ""
 }

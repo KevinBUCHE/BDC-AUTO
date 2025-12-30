@@ -1,98 +1,148 @@
-import argparse
+from __future__ import annotations
+
 import json
-import sys
+import os
+import threading
+import tkinter as tk
 from pathlib import Path
+from tkinter import filedialog, messagebox, scrolledtext
 
 from services import bdc_filler, devis_parser, rules, sanitize
+from services import config as app_config
 
 
-def load_config(config_path: Path | None = None) -> dict:
-    candidates = []
-    if config_path:
-        candidates.append(config_path)
-    else:
-        candidates.append(Path(__file__).resolve().parent / "config.json")
-        candidates.append(Path.cwd() / "config.json")
-        if hasattr(sys, "_MEIPASS"):
-            candidates.append(Path(getattr(sys, "_MEIPASS")) / "config.json")
-        candidates.append(Path(sys.executable).resolve().parent / "config.json")
+class BDCApp:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("BDC Generator")
+        self.root.geometry("720x520")
 
-    for path in candidates:
-        if path.exists():
-            with path.open("r", encoding="utf-8") as config_file:
-                return json.load(config_file)
+        self.config = app_config.load_config()
+        app_config.copy_default_template_if_available(self.config, Path(__file__).parent)
 
-    raise FileNotFoundError("config.json introuvable")
+        self.selected_files: list[Path] = []
+
+        self._build_ui()
+        self._log("Prêt. Sélectionnez un devis SRX.")
+
+    def _build_ui(self) -> None:
+        frame = tk.Frame(self.root, padx=10, pady=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        btn_select = tk.Button(frame, text="Choisir devis SRX (PDF)", command=self.choose_devis)
+        btn_select.grid(row=0, column=0, sticky="w", padx=5, pady=5)
+
+        btn_template = tk.Button(frame, text="Choisir template BDC", command=self.choose_template)
+        btn_template.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+
+        btn_generate = tk.Button(frame, text="Générer BDC", command=self.generate_bdc)
+        btn_generate.grid(row=1, column=0, sticky="w", padx=5, pady=5)
+
+        btn_open_output = tk.Button(frame, text="Ouvrir dossier Output", command=self.open_output_dir)
+        btn_open_output.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+        self.log_area = scrolledtext.ScrolledText(frame, height=20, state=tk.DISABLED)
+        self.log_area.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=10)
+
+        frame.columnconfigure(2, weight=1)
+        frame.rowconfigure(2, weight=1)
+
+    def _log(self, message: str) -> None:
+        self.log_area.configure(state=tk.NORMAL)
+        self.log_area.insert(tk.END, message + "\n")
+        self.log_area.configure(state=tk.DISABLED)
+        self.log_area.see(tk.END)
+
+    def choose_devis(self) -> None:
+        paths = filedialog.askopenfilenames(
+            title="Choisir devis SRX",
+            filetypes=[("PDF", "*.pdf"), ("Tous les fichiers", "*.*")],
+            initialdir=self.config.get("last_open_dir", str(Path.home())),
+        )
+        if not paths:
+            return
+        self.selected_files = [Path(p) for p in paths]
+        self.config["last_open_dir"] = str(Path(paths[0]).parent)
+        app_config.save_config(self.config)
+        self._log(f"Sélectionné(s): {', '.join(Path(p).name for p in paths)}")
+
+    def choose_template(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Choisir template BDC",
+            filetypes=[("PDF", "*.pdf"), ("Tous les fichiers", "*.*")],
+            initialdir=str(Path(self.config.get("template_path", app_config.get_templates_dir()))),
+        )
+        if not path:
+            return
+        destination = app_config.get_templates_dir() / Path(path).name
+        destination.write_bytes(Path(path).read_bytes())
+        self.config["template_path"] = str(destination)
+        app_config.save_config(self.config)
+        self._log(f"Template mis à jour: {destination}")
+
+    def open_output_dir(self) -> None:
+        output_dir = Path(self.config.get("output_dir", app_config.get_output_dir(self.config)))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            if os.name == "nt":
+                os.startfile(str(output_dir))  # type: ignore[attr-defined]
+            elif os.name == "posix":
+                import subprocess
+
+                subprocess.Popen(["xdg-open", str(output_dir)])
+        except Exception as exc:
+            messagebox.showerror("Erreur", f"Impossible d'ouvrir le dossier: {exc}")
+
+    def generate_bdc(self) -> None:
+        if not self.selected_files:
+            messagebox.showwarning("Aucun devis", "Sélectionnez au moins un devis PDF.")
+            return
+        threading.Thread(target=self._generate_worker, daemon=True).start()
+
+    def _generate_worker(self) -> None:
+        template_path = app_config.resolve_template_path(self.config)
+        if not template_path.exists():
+            self._log("Template introuvable. Sélectionnez un template valide.")
+            return
+
+        output_dir = Path(self.config.get("output_dir", app_config.get_output_dir(self.config)))
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        for pdf_path in self.selected_files:
+            try:
+                self._log(f"Traitement de {pdf_path.name}...")
+                parsed, parse_warnings = devis_parser.parse_devis(pdf_path)
+                sanitized, sanitize_warnings = sanitize.apply_sanitize(parsed, self.config)
+                mapped, mapping_warnings = rules.apply_rules(sanitized, self.config)
+
+                srx = mapped.get("bdc_devis_annee_mois", pdf_path.stem)
+                debug_path = output_dir / f"{srx}_parsed.json"
+                debug_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
+
+                output_pdf = output_dir / f"{srx}_BDC.pdf"
+                fill_warnings = bdc_filler.fill_bdc(template_path, output_pdf, mapped)
+
+                all_warnings = parse_warnings + sanitize_warnings + mapping_warnings + fill_warnings
+                if all_warnings:
+                    for warn in all_warnings:
+                        self._log(f"Warning: {warn}")
+
+                self._log(f"BDC généré: {output_pdf}")
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"Erreur pour {pdf_path.name}: {exc}")
+                messagebox.showerror("Erreur", f"{pdf_path.name}: {exc}")
 
 
-def parse_bool(value: str | None) -> bool | None:
-    if value is None:
-        return None
-    lowered = value.lower()
-    if lowered in {"true", "1", "yes", "y"}:
-        return True
-    if lowered in {"false", "0", "no", "n"}:
-        return False
-    raise ValueError(f"Invalid boolean value: {value}")
+def ensure_first_run_setup() -> None:
+    cfg = app_config.load_config()
+    app_config.ensure_directories(cfg)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Génération automatique de bon de commande")
-    parser.add_argument("--input", required=True, help="Chemin du devis PDF à analyser")
-    parser.add_argument(
-        "--template",
-        required=True,
-        help="Chemin du template PDF 'bon de commande V1.pdf'",
-    )
-    parser.add_argument("--output", required=True, help="Chemin du PDF de sortie")
-    parser.add_argument(
-        "--pose",
-        required=False,
-        help="Forcer la détection de pose vendue (true|false)",
-    )
-    parser.add_argument(
-        "--debug-json",
-        dest="debug_json",
-        required=False,
-        help="Écrit le JSON final utilisé pour remplir le BDC",
-    )
-
-    args = parser.parse_args()
-
-    input_path = Path(args.input)
-    template_path = Path(args.template)
-    output_path = Path(args.output)
-    debug_json_path = Path(args.debug_json) if args.debug_json else None
-
-    pose_override = parse_bool(args.pose) if args.pose is not None else None
-
-    config = load_config()
-
-    parsed_data, parse_warnings = devis_parser.parse_devis(input_path)
-    sanitized_data, sanitize_warnings = sanitize.apply_sanitize(parsed_data, config)
-    mapped_data, mapping_warnings = rules.apply_rules(
-        sanitized_data, config, pose_override=pose_override
-    )
-
-    all_warnings = parse_warnings + sanitize_warnings + mapping_warnings
-
-    if debug_json_path:
-        debug_json_path.parent.mkdir(parents=True, exist_ok=True)
-        with debug_json_path.open("w", encoding="utf-8") as debug_file:
-            json.dump(mapped_data, debug_file, ensure_ascii=False, indent=2)
-
-    fill_warnings = bdc_filler.fill_bdc(
-        template_path=template_path,
-        output_path=output_path,
-        data=mapped_data,
-    )
-
-    all_warnings.extend(fill_warnings)
-
-    if all_warnings:
-        print("Warnings:")
-        for warn in all_warnings:
-            print(f"- {warn}")
+    ensure_first_run_setup()
+    root = tk.Tk()
+    BDCApp(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":

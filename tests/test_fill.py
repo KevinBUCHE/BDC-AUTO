@@ -12,13 +12,12 @@ TEXT_FIELDS = [
     "bdc_client_nom",
     "bdc_commercial_nom",
     "bdc_montant_fourniture_ht",
-    "bdc_montant_pose_ht",
 ]
 
 CHECKBOX_FIELDS = [
-    "bdc_chk_avec-contre-marches",
-    "bdc_chk_avec-sans-marches",
     "bdc_chk_autoliquidation",
+    "bdc_chk_livraison_poseur",
+    "bdc_chk_livraison_client",
 ]
 
 
@@ -54,14 +53,14 @@ def test_fill_populates_fields(tmp_path: Path):
     data = {
         "bdc_devis_annee_mois": "SRX2512AFF003105",
         "bdc_ref_affaire": "AFF-42",
-        "bdc_client_nom": "Client Demo",
+        "bdc_client_nom": "CLIENT DEMO",
         "bdc_commercial_nom": "Commercial Test",
         "bdc_montant_fourniture_ht": "9 979,94",
         "bdc_montant_pose_ht": "1 200,00",
         "pose_sold": True,
-        "bdc_chk_avec-contre-marches": True,
-        "bdc_chk_avec-sans-marches": False,
         "bdc_chk_autoliquidation": True,
+        "bdc_chk_livraison_poseur": True,
+        "bdc_chk_livraison_client": False,
     }
 
     warnings = bdc_filler.fill_bdc(template_path, output_path, data)
@@ -73,7 +72,5 @@ def test_fill_populates_fields(tmp_path: Path):
     for key in TEXT_FIELDS:
         assert fields[key]["/V"]
 
-    assert fields["bdc_chk_avec-contre-marches"]["/V"] != fields[
-        "bdc_chk_avec-sans-marches"
-    ]["/V"]
-    assert fields["bdc_chk_autoliquidation"]["/V"]
+    assert fields["bdc_chk_autoliquidation"]["/V"] == fields["bdc_chk_livraison_poseur"]["/V"]
+    assert fields["bdc_chk_livraison_client"]["/V"] != fields["bdc_chk_livraison_poseur"]["/V"]

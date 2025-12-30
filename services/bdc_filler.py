@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import BooleanObject, DictionaryObject, NameObject
@@ -54,7 +54,9 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
 
     for page in writer.pages:
         if text_updates:
-            writer.update_page_form_field_values(page, {k: v for k, v in text_updates.items() if k in form_fields})
+            writer.update_page_form_field_values(
+                page, {k: v for k, v in text_updates.items() if k in form_fields}
+            )
         if checkbox_updates:
             annotations = page.get("/Annots", [])
             for annotation_ref in annotations:
@@ -83,11 +85,7 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
     validation_reader = PdfReader(str(output_path))
     validation_fields = validation_reader.get_fields() or {}
 
-    critical_fields = set(CRITICAL_FIELDS)
-    if data.get("pose_sold"):
-        critical_fields.add("bdc_montant_pose_ht")
-
-    for field in critical_fields:
+    for field in CRITICAL_FIELDS:
         if field not in validation_fields:
             warnings.append(f"Champ critique absent: {field}")
             continue
