@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import pdfplumber
+import unicodedata
 
 SRX_PATTERN = re.compile(r"SRX(\d{4})([A-Z]{3})(\d{6})")
 PRICE_PATTERN = re.compile(r"(\d[\d\s]*,\d{2})")
@@ -78,6 +79,13 @@ def _get_next_line(lines: List[str], index: int) -> str:
     return ""
 
 
+def _norm_text(value: str) -> str:
+    value = value.replace("\u202f", " ").replace(NBSP, " ")
+    value = re.sub(r"\s+", " ", value).strip()
+    decomposed = unicodedata.normalize("NFKD", value)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
+
+
 def _fallback_client(lines: List[str]) -> str:
     for idx, line in enumerate(lines):
         if CP_VILLE_PATTERN.search(line):
@@ -124,9 +132,13 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
 
     ref_affaire = ""
     for idx, line in enumerate(lines):
-        match = REF_AFFAIRE_RE.search(line)
-        if match:
-            ref_affaire = match.group(1).strip()
+        normalized = _norm_text(line)
+        if "ref affaire" in normalized or "reference affaire" in normalized:
+            if ":" in line:
+                ref_affaire = line.split(":", 1)[1].strip()
+            else:
+                tail_match = re.search(r"(?i)\baffaire\b\s*(.+)$", line)
+                ref_affaire = tail_match.group(1).strip() if tail_match else ""
             if not ref_affaire:
                 for j in range(idx + 1, len(lines)):
                     nxt = lines[j].strip()

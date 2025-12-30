@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import ArrayObject, BooleanObject, DictionaryObject, NameObject
+from pypdf.generic import ArrayObject, BooleanObject, DictionaryObject, NameObject, TextStringObject
 from pypdf.generic._data_structures import IndirectObject
 
 from services.rules import CRITICAL_FIELDS
@@ -41,6 +41,20 @@ def _set_checkbox(annotation: dict, value: bool) -> None:
     annotation.update({NameObject("/AS"): on_value if value else NameObject("/Off")})
 
 
+def _iter_acroform_fields(writer: PdfWriter) -> list[DictionaryObject]:
+    acro = writer._root_object.get("/AcroForm")
+    if acro is None:
+        return []
+    acro = acro.get_object() if hasattr(acro, "get_object") else acro
+    fields = acro.get("/Fields", [])
+    resolved: list[DictionaryObject] = []
+    for field in fields:
+        obj = field.get_object() if hasattr(field, "get_object") else field
+        if isinstance(obj, DictionaryObject):
+            resolved.append(obj)
+    return resolved
+
+
 def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) -> List[str]:
     warnings: List[str] = []
 
@@ -62,26 +76,30 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
         elif key.startswith("bdc_"):
             text_updates[key] = "" if value is None else str(value)
 
+    acro_fields = _iter_acroform_fields(writer)
+
+    for field in acro_fields:
+        name = field.get("/T")
+        key = str(name) if name else ""
+        if key and key in text_updates:
+            field[NameObject("/V")] = TextStringObject(text_updates[key])
+        if key and key in checkbox_updates:
+            _set_checkbox(field, checkbox_updates[key])
+
     for page in writer.pages:
-        if text_updates:
-            updates = {k: v for k, v in text_updates.items() if k in form_fields}
-            if updates:
-                try:
-                    writer.update_page_form_field_values(page, updates, auto_regenerate=False)
-                except TypeError:
-                    writer.update_page_form_field_values(page, updates)
-        if checkbox_updates:
-            annotations = page.get("/Annots", [])
-            for annotation_ref in annotations:
-                annotation = annotation_ref.get_object() if hasattr(annotation_ref, "get_object") else annotation_ref
-                if annotation.get("/Subtype") != NameObject("/Widget"):
-                    continue
-                field_name = annotation.get("/T")
-                if not field_name:
-                    continue
-                decoded = str(field_name)
-                if decoded in checkbox_updates:
-                    _set_checkbox(annotation, checkbox_updates[decoded])
+        annotations = page.get("/Annots", [])
+        for annotation_ref in annotations:
+            annotation = annotation_ref.get_object() if hasattr(annotation_ref, "get_object") else annotation_ref
+            if not isinstance(annotation, DictionaryObject):
+                continue
+            if annotation.get("/Subtype") != NameObject("/Widget"):
+                continue
+            field_name = annotation.get("/T")
+            key = str(field_name) if field_name else ""
+            if key in text_updates:
+                annotation[NameObject("/V")] = TextStringObject(text_updates[key])
+            if key in checkbox_updates:
+                _set_checkbox(annotation, checkbox_updates[key])
 
     for checkbox_name in checkbox_updates:
         if checkbox_name not in form_fields:
