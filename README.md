@@ -27,6 +27,11 @@ Si `assets/bon de commande V1.pdf` est présent dans le dépôt, il sera copié 
 5. **Ouvrir dossier Output** ouvre le dossier de sortie.
 6. En usage portable: téléchargez l'artifact, dézippez, placez `bon de commande V1.pdf` dans `Templates/`, puis double-cliquez `RUN.bat` (drag & drop PDF possible). Le BDC et le JSON debug sont dans `Output/`.
 
+## Checklist fichiers à fournir (usage réel)
+- Template officiel : copiez `bon de commande V1.pdf` dans `Templates/`.
+- Devis SRX : choisissez votre PDF via l’UI ou déposez-le sur `RUN.bat` (portable). Pour vos propres tests manuels, rangez-les dans `samples/` (non versionné).
+- Configuration : ajustez `config.json` (ou `Config/config.json`) pour la liste noire ou l’adresse de dépôt.
+
 ## Configuration
 `Config/config.json` (créé automatiquement) contient :
 - `template_path`

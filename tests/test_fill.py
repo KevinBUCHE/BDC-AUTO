@@ -1,14 +1,8 @@
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import (
-    ArrayObject,
-    BooleanObject,
-    DictionaryObject,
-    NameObject,
-    NumberObject,
-    TextStringObject,
-)
+from pypdf.generic import ArrayObject, BooleanObject, DictionaryObject, NameObject, NumberObject
+from pypdf.generic import RectangleObject, TextStringObject
 
 from services import bdc_filler
 
@@ -33,7 +27,7 @@ def _text_widget(field_name: str, rect: tuple[float, float, float, float]) -> Di
         {
             NameObject("/FT"): NameObject("/Tx"),
             NameObject("/T"): TextStringObject(field_name),
-            NameObject("/Rect"): ArrayObject([NumberObject(r) for r in rect]),
+            NameObject("/Rect"): RectangleObject(rect),
             NameObject("/V"): TextStringObject(""),
             NameObject("/Ff"): NumberObject(0),
             NameObject("/Subtype"): NameObject("/Widget"),
@@ -47,7 +41,7 @@ def _checkbox_widget(field_name: str, rect: tuple[float, float, float, float]) -
         {
             NameObject("/FT"): NameObject("/Btn"),
             NameObject("/T"): TextStringObject(field_name),
-            NameObject("/Rect"): ArrayObject([NumberObject(r) for r in rect]),
+            NameObject("/Rect"): RectangleObject(rect),
             NameObject("/V"): NameObject("/Off"),
             NameObject("/AS"): NameObject("/Off"),
             NameObject("/Ff"): NumberObject(0),
