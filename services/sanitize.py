@@ -6,16 +6,27 @@ from typing import Dict, List, Tuple
 PRICE_CLEAN_RE = re.compile(r"[^\d,]")
 
 
+def _group_thousands(euros: str) -> str:
+    euros_digits = re.sub(r"\D", "", euros)
+    if not euros_digits:
+        return ""
+    rev = euros_digits[::-1]
+    parts = [rev[i : i + 3] for i in range(0, len(rev), 3)]
+    return " ".join(p[::-1] for p in parts[::-1])
+
+
 def normalize_price(value: str) -> str:
     if not value:
         return ""
     cleaned = PRICE_CLEAN_RE.sub("", value)
     parts = cleaned.split(",")
-    if len(parts) == 1:
-        return cleaned
-    euros = parts[0]
-    cents = parts[1][:2].ljust(2, "0")
-    return f"{euros},{cents}"
+    euros = parts[0] if parts else ""
+    cents = parts[1] if len(parts) > 1 else "00"
+    euros_fmt = _group_thousands(euros)
+    cents_fmt = cents[:2].ljust(2, "0")
+    if not euros_fmt:
+        return ""
+    return f"{euros_fmt},{cents_fmt}"
 
 
 def apply_sanitize(data: Dict[str, str], config: Dict[str, object]) -> Tuple[Dict[str, str], List[str]]:
