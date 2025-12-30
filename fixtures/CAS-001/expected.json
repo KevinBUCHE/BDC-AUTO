@@ -1,0 +1,21 @@
+{
+  "source_pdf": "fixtures/CAS-001/source.pdf",
+  "devis_full": "SRX2512AFF003105",
+  "ref_affaire": "AFF-42",
+  "client_nom": "Client Demo",
+  "commercial_nom": "Commercial Test",
+  "fourniture_ht": "9 979,94",
+  "prestations_ht": "1 200,00",
+  "pose_sold": true,
+  "esc_gamme": "Escalier Hélicoïdal",
+  "esc_essence": "Chêne",
+  "esc_finition_marches": "Huilé",
+  "esc_finition_structure": "Thermolaqué",
+  "esc_finition_mains_courante": "Brossé",
+  "esc_finition_contremarche": "Peint",
+  "esc_tete_de_poteau": "Tête standard",
+  "remplissage_rampant": "Barreaudage vertical",
+  "remplissage_etage": "",
+  "remplissage_soubassement": "",
+  "parse_warning": ""
+}
