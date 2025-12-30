@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-import re
 import os
+import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import pdfplumber
-import unicodedata
 
 SRX_PATTERN = re.compile(r"SRX(\d{4})([A-Z]{3})(\d{6})")
 PRICE_PATTERN = re.compile(r"(\d[\d\s]*,\d{2})")
 CP_VILLE_PATTERN = re.compile(r"\b\d{5}\s+[A-ZÉÈÂÊÎÔÛÄËÏÖÜÀÂÇ\- ]+")
 CLIENT_EXCLUDE = {"sas", "rcs", "naf", "capital"}
-REF_AFFAIRE_RE = re.compile(
-    r"(?is)\bref(?:[.\s]*|[ée]f[.\s]*)?[\s]*affaire\b\s*[:\uFE55\uFF1A\u2236\u02D0]?\s*([A-Z0-9][A-Z0-9\\-_/ ]{1,30})"
+REF_LINE_REGEX = (
+    r"(?:réf\.?\s*affaire|ref\.?\s*affaire|référence\s*affaire|r.{0,2}f\s*affaire)\s*[: ]\s*"
+    r"([A-Z0-9][A-Z0-9\-_\/]{1,30})"
 )
 
 
@@ -30,7 +31,6 @@ ANCHORS = {
     "prestations_section": "PRESTATIONS",
 }
 REF_LABELS = ["réf affaire", "ref affaire", "référence affaire", "réf. affaire"]
-REF_AFFAIRE_RE = re.compile(r"(?i)\br[ée]f\.?\s*affaire\s*:?\s*(.+)$")
 NBSP = "\u00a0"
 
 
@@ -44,8 +44,7 @@ def _extract_lines(pdf_path: Path) -> List[str]:
         for page in pdf.pages:
             text = page.extract_text() or ""
             for raw_line in text.splitlines():
-                cleaned = raw_line.replace("\u202f", " ").replace(NBSP, " ")
-                cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                cleaned = _normalize_line(raw_line)
                 if cleaned:
                     lines.append(cleaned)
 
@@ -141,21 +140,19 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
     warnings: List[str] = []
 
     joined_text = "\n".join(lines)
-    normalized_joined = joined_text.replace("\u202f", " ").replace(NBSP, " ")
-    normalized_joined = re.sub(r"[ \t]+", " ", normalized_joined)
-
     ref_affaire = ""
-    match_ref = REF_AFFAIRE_RE.search(normalized_joined)
-    if match_ref:
-        ref_affaire = (match_ref.group(1) or "").strip()
-    else:
-        alt = re.search(
-            r"(?is)\br[ée]f[ée]rence\s*affaire\b\s*[:\uFE55\uFF1A]?\s*([A-Z0-9][A-Z0-9\\-_/ ]{1,30})",
-            normalized_joined,
-        )
-        if alt:
-            ref_affaire = (alt.group(1) or "").strip()
-    ref_affaire = ref_affaire.strip(" )]}\u00a0")
+    for idx, line in enumerate(lines):
+        normalized_line = _normalize_line(line)
+        match_line = re.search(REF_LINE_REGEX, normalized_line, flags=re.IGNORECASE)
+        if match_line:
+            ref_affaire = (match_line.group(1) or "").strip()
+            if not ref_affaire:
+                for j in range(idx + 1, len(lines)):
+                    nxt = lines[j].strip()
+                    if nxt:
+                        ref_affaire = nxt
+                        break
+            break
 
     srx_match = SRX_PATTERN.search(joined_text)
     devis_full = srx_match.group(0) if srx_match else ""
@@ -186,6 +183,37 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
                             ref_affaire = nxt
                             break
                 break
+
+    if not ref_affaire:
+        for idx, line in enumerate(lines):
+            normalized_line = _normalize_line(line)
+            normalized = _norm_text(normalized_line)
+            if "ref affaire" in normalized or "reference affaire" in normalized:
+                regex_line = re.search(
+                    r"(?:réf\.?\s*affaire|ref\.?\s*affaire|référence\s*affaire)\s*[: ]\s*([A-Z0-9][A-Z0-9\\-_/]{1,30})",
+                    normalized_line,
+                    flags=re.IGNORECASE,
+                )
+                if regex_line:
+                    ref_affaire = regex_line.group(1).strip()
+                elif ":" in normalized_line:
+                    ref_affaire = normalized_line.split(":", 1)[1].strip()
+                else:
+                    tail_match = re.search(r"(?i)\baffaire\b\s*(.+)$", normalized_line)
+                    ref_affaire = tail_match.group(1).strip() if tail_match else ""
+                if not ref_affaire:
+                    for j in range(idx + 1, len(lines)):
+                        nxt = lines[j].strip()
+                        if nxt:
+                            ref_affaire = nxt
+                            break
+                break
+
+    ref_affaire = ref_affaire.strip(" )]}\u00a0")
+    for token in ("CODE", "CLIENT", "CONTACT"):
+        if token in ref_affaire.upper():
+            ref_affaire = ref_affaire.split(" ")[0]
+            break
 
     client_index = _find_line(lines, ANCHORS["code_client"])
     client_nom = _get_next_line(lines, client_index) if client_index != -1 else ""
