@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -12,7 +13,7 @@ PRICE_PATTERN = re.compile(r"(\d[\d\s]*,\d{2})")
 CP_VILLE_PATTERN = re.compile(r"\b\d{5}\s+[A-ZÉÈÂÊÎÔÛÄËÏÖÜÀÂÇ\- ]+")
 CLIENT_EXCLUDE = {"sas", "rcs", "naf", "capital"}
 REF_AFFAIRE_RE = re.compile(
-    r"(?is)\bref(?:[.\s]*|[ée]f[.\s]*)?[\s]*affaire\b\s*[:\uFE55\uFF1A\u2236\u02D0]?\s*([A-Z0-9][A-Z0-9\-_/ ]{1,30})"
+    r"(?is)\bref(?:[.\s]*|[ée]f[.\s]*)?[\s]*affaire\b\s*[:\uFE55\uFF1A\u2236\u02D0]?\s*([A-Z0-9][A-Z0-9\\-_/ ]{1,30})"
 )
 
 
@@ -47,6 +48,12 @@ def _extract_lines(pdf_path: Path) -> List[str]:
                 cleaned = re.sub(r"\s+", " ", cleaned).strip()
                 if cleaned:
                     lines.append(cleaned)
+
+    if os.getenv("BDC_DEBUG_PARSER") == "1":
+        debug_path = pdf_path.with_suffix(".debug_lines.txt")
+        debug_path.write_text("\n".join(lines), encoding="utf-8")
+        for preview in lines[:30]:
+            print(f"[BDC_DEBUG] {preview}")
     return lines
 
 
@@ -87,6 +94,12 @@ def _norm_text(value: str) -> str:
     value = re.sub(r"\s+", " ", value).strip()
     decomposed = unicodedata.normalize("NFKD", value)
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
+
+
+def _normalize_line(value: str) -> str:
+    value = value.replace("\u202f", " ").replace(NBSP, " ").replace("：", ":")
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
 
 
 def _fallback_client(lines: List[str]) -> str:
@@ -137,7 +150,7 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
         ref_affaire = (match_ref.group(1) or "").strip()
     else:
         alt = re.search(
-            r"(?is)\br[ée]f[ée]rence\s*affaire\b\s*[:\uFE55\uFF1A]?\s*([A-Z0-9][A-Z0-9\-_/ ]{1,30})",
+            r"(?is)\br[ée]f[ée]rence\s*affaire\b\s*[:\uFE55\uFF1A]?\s*([A-Z0-9][A-Z0-9\\-_/ ]{1,30})",
             normalized_joined,
         )
         if alt:
@@ -151,12 +164,20 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
 
     if not ref_affaire:
         for idx, line in enumerate(lines):
-            normalized = _norm_text(line)
+            normalized_line = _normalize_line(line)
+            normalized = _norm_text(normalized_line)
             if "ref affaire" in normalized or "reference affaire" in normalized:
-                if ":" in line:
-                    ref_affaire = line.split(":", 1)[1].strip()
+                regex_line = re.search(
+                    r"(?:réf\.?\s*affaire|ref\.?\s*affaire|référence\s*affaire)\s*[: ]\s*([A-Z0-9][A-Z0-9\\-_/]{1,30})",
+                    normalized_line,
+                    flags=re.IGNORECASE,
+                )
+                if regex_line:
+                    ref_affaire = regex_line.group(1).strip()
+                elif ":" in normalized_line:
+                    ref_affaire = normalized_line.split(":", 1)[1].strip()
                 else:
-                    tail_match = re.search(r"(?i)\baffaire\b\s*(.+)$", line)
+                    tail_match = re.search(r"(?i)\baffaire\b\s*(.+)$", normalized_line)
                     ref_affaire = tail_match.group(1).strip() if tail_match else ""
                 if not ref_affaire:
                     for j in range(idx + 1, len(lines)):
