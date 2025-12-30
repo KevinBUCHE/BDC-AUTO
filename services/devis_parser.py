@@ -24,6 +24,7 @@ ANCHORS = {
     "prestations": "PRIX PRESTATIONS ET SERVICES HT",
     "prestations_section": "PRESTATIONS",
 }
+REF_LABELS = ["réf affaire", "ref affaire", "référence affaire", "réf. affaire"]
 
 
 class ParsedDevis(Tuple[Dict[str, object], List[str]]):
@@ -45,6 +46,14 @@ def _extract_lines(pdf_path: Path) -> List[str]:
 def _find_line(lines: List[str], anchor: str) -> int:
     for idx, line in enumerate(lines):
         if anchor.lower() in line.lower():
+            return idx
+    return -1
+
+
+def _find_first_of(lines: List[str], labels: List[str]) -> int:
+    for label in labels:
+        idx = _find_line(lines, label)
+        if idx != -1:
             return idx
     return -1
 
@@ -110,8 +119,12 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
     if not devis_full:
         warnings.append("Numéro de devis introuvable (SRX...)")
 
-    ref_index = _find_line(lines, ANCHORS["ref_affaire"])
-    ref_affaire = _extract_after_colon(lines[ref_index]) if ref_index != -1 else ""
+    ref_index = _find_first_of(lines, REF_LABELS)
+    ref_affaire = ""
+    if ref_index != -1:
+        ref_affaire = _extract_after_colon(lines[ref_index])
+        if not ref_affaire:
+            ref_affaire = _get_next_line(lines, ref_index)
 
     client_index = _find_line(lines, ANCHORS["code_client"])
     client_nom = _get_next_line(lines, client_index) if client_index != -1 else ""

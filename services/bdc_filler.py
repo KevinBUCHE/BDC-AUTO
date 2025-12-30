@@ -4,16 +4,26 @@ from pathlib import Path
 from typing import Dict, List
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import BooleanObject, DictionaryObject, NameObject
+from pypdf.generic import ArrayObject, BooleanObject, DictionaryObject, NameObject
+from pypdf.generic._data_structures import IndirectObject
 
 from services.rules import CRITICAL_FIELDS
 
 
 def _prepare_acroform(writer: PdfWriter) -> None:
-    acroform = writer._root_object.get("/AcroForm")
-    if acroform is None:
+    acroform_ref = writer._root_object.get("/AcroForm")
+    if acroform_ref is None:
         acroform = DictionaryObject()
         writer._root_object[NameObject("/AcroForm")] = acroform
+    else:
+        acroform = acroform_ref.get_object() if isinstance(acroform_ref, IndirectObject) else acroform_ref
+        if not isinstance(acroform, DictionaryObject):
+            acroform = DictionaryObject()
+            writer._root_object[NameObject("/AcroForm")] = acroform
+
+    if "/Fields" not in acroform:
+        acroform[NameObject("/Fields")] = ArrayObject()
+
     acroform[NameObject("/NeedAppearances")] = BooleanObject(True)
 
 
