@@ -12,7 +12,7 @@ from services import config as app_config
 
 
 class BDCApp:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, initial_files: list[Path] | None = None):
         self.root = root
         self.root.title("BDC Generator")
         self.root.geometry("720x520")
@@ -20,11 +20,14 @@ class BDCApp:
         self.config = app_config.load_config()
         app_config.copy_default_template_if_available(self.config, Path(__file__).parent)
 
-        self.selected_files: list[Path] = []
+        self.selected_files: list[Path] = list(initial_files or [])
 
         self._build_ui()
         self._log(f"Prêt. Dossier base: {app_config.get_app_root()}")
         self._log("Sélectionnez un devis SRX.")
+
+        if self.selected_files:
+            self._log(f"Pré-sélection: {', '.join(p.name for p in self.selected_files)}")
 
     def _build_ui(self) -> None:
         frame = tk.Frame(self.root, padx=10, pady=10)
@@ -143,8 +146,9 @@ def ensure_first_run_setup() -> None:
 
 def main() -> None:
     ensure_first_run_setup()
+    initial_files = [Path(arg) for arg in sys.argv[1:] if Path(arg).exists()]
     root = tk.Tk()
-    BDCApp(root)
+    BDCApp(root, initial_files=initial_files)
     root.mainloop()
 
 

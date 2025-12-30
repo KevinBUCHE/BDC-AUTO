@@ -38,8 +38,8 @@ jobs:
           $portableRoot = "dist/BDC Generator"
           New-Item -ItemType Directory -Force -Path "$portableRoot/Templates" | Out-Null
           New-Item -ItemType Directory -Force -Path "$portableRoot/Output" | Out-Null
+          Copy-Item -Path "RUN.bat" -Destination "$portableRoot/RUN.bat" -Force
           Set-Content -Path "$portableRoot/README_Templates.txt" -Value "Placez ici le template 'bon de commande V1.pdf'." -Encoding UTF8
-          Set-Content -Path "$portableRoot/RUN.bat" -Value "@echo off`r`nstart \"\" \"BDC Generator.exe\" %*`r`n" -Encoding ASCII
           Compress-Archive -Path "$portableRoot/*" -DestinationPath "dist/BDC_Generator_Portable.zip"
 
       - name: Upload portable artifact

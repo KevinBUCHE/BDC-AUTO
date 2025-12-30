@@ -25,6 +25,7 @@ Si `assets/bon de commande V1.pdf` est présent dans le dépôt, il sera copié 
 3. Vérifiez/choisissez le template via **Choisir template BDC** si nécessaire.
 4. Cliquez sur **Générer BDC**. Les PDF générés et les JSON debug sont placés dans `Output/`.
 5. **Ouvrir dossier Output** ouvre le dossier de sortie.
+6. En usage portable: téléchargez l'artifact, dézippez, placez `bon de commande V1.pdf` dans `Templates/`, puis double-cliquez `RUN.bat` (drag & drop PDF possible). Le BDC et le JSON debug sont dans `Output/`.
 
 ## Configuration
 `Config/config.json` (créé automatiquement) contient :
