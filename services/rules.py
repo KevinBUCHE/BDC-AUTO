@@ -71,10 +71,10 @@ def apply_rules(data: Dict[str, object], config: Dict[str, object] | None = None
     mapped["bdc_chk_livraison_client"] = not bool(mapped["pose_sold"])
     mapped["bdc_chk_autoliquidation"] = bool(mapped["pose_sold"])
 
-    depot_address = \"\"
+    depot_address = ""
     if config:
-        depot_address = str(config.get(\"depot_address\", \"\")).strip()
-    if mapped[\"pose_sold\"] and depot_address:
-        mapped[\"bdc_livraison_bloc\"] = depot_address
+        depot_address = str(config.get("depot_address", "")).strip()
+    if mapped["pose_sold"] and depot_address:
+        mapped["bdc_livraison_bloc"] = depot_address
 
     return mapped, warnings

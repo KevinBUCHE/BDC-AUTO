@@ -22,6 +22,9 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install -r requirements-dev.txt
 
+      - name: Lint bad escapes
+        run: python scripts/check_bad_escapes.py
+
       - name: Run tests
         run: python -m pytest -q
 
