@@ -27,24 +27,17 @@ jobs:
 
       - name: Build portable (PyInstaller)
         run: |
-          python -m PyInstaller --noconfirm --noconsole --name "BDC Generator" main.py --add-data "config.json;." --add-data "assets;assets"
+          pyinstaller --noconfirm --clean --onedir --windowed --name "BDC Generator" main.py
 
-      - name: Install Inno Setup
-        run: choco install innosetup -y
-
-      - name: Build installer
+      - name: Prepare portable package
+        shell: pwsh
         run: |
-          ISCC installer\\bdc_generator.iss
-
-      - name: Zip portable build
-        run: |
-          Compress-Archive -Path \"dist/BDC Generator/*\" -DestinationPath \"dist/BDC_Generator_Portable.zip\"
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BDC_Generator_Installer
-          path: installer/Output/BDC_Generator_Setup.exe
+          $portableRoot = "dist/BDC Generator"
+          New-Item -ItemType Directory -Force -Path "$portableRoot/Templates" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$portableRoot/Output" | Out-Null
+          Set-Content -Path "$portableRoot/README_Templates.txt" -Value "Placez ici le template 'bon de commande V1.pdf'." -Encoding UTF8
+          Set-Content -Path "$portableRoot/RUN.bat" -Value "@echo off`r`nstart \"\" \"BDC Generator.exe\" %*`r`n" -Encoding ASCII
+          Compress-Archive -Path "$portableRoot/*" -DestinationPath "dist/BDC_Generator_Portable.zip"
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4

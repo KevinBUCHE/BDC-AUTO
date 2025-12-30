@@ -1,7 +1,14 @@
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.annotations import AnnotationBuilder
+from pypdf.generic import (
+    ArrayObject,
+    BooleanObject,
+    DictionaryObject,
+    NameObject,
+    NumberObject,
+    TextStringObject,
+)
 
 from services import bdc_filler
 
@@ -21,26 +28,62 @@ CHECKBOX_FIELDS = [
 ]
 
 
+def _text_widget(field_name: str, rect: tuple[float, float, float, float]) -> DictionaryObject:
+    return DictionaryObject(
+        {
+            NameObject("/FT"): NameObject("/Tx"),
+            NameObject("/T"): TextStringObject(field_name),
+            NameObject("/Rect"): ArrayObject([NumberObject(r) for r in rect]),
+            NameObject("/V"): TextStringObject(""),
+            NameObject("/Ff"): NumberObject(0),
+            NameObject("/Subtype"): NameObject("/Widget"),
+            NameObject("/Type"): NameObject("/Annot"),
+        }
+    )
+
+
+def _checkbox_widget(field_name: str, rect: tuple[float, float, float, float]) -> DictionaryObject:
+    return DictionaryObject(
+        {
+            NameObject("/FT"): NameObject("/Btn"),
+            NameObject("/T"): TextStringObject(field_name),
+            NameObject("/Rect"): ArrayObject([NumberObject(r) for r in rect]),
+            NameObject("/V"): NameObject("/Off"),
+            NameObject("/AS"): NameObject("/Off"),
+            NameObject("/Ff"): NumberObject(0),
+            NameObject("/Subtype"): NameObject("/Widget"),
+            NameObject("/Type"): NameObject("/Annot"),
+        }
+    )
+
+
 def _create_template(path: Path) -> None:
     writer = PdfWriter()
-    writer.add_blank_page(width=612, height=792)
+    page = writer.add_blank_page(width=612, height=792)
+
+    fields: list[DictionaryObject] = []
 
     for idx, name in enumerate(TEXT_FIELDS):
-        annotation = AnnotationBuilder.text_widget(
-            rect=(50, 750 - idx * 30, 300, 770 - idx * 30),
-            field_name=name,
-            font="Helvetica",
-            font_size=10,
-            text="",
-        )
-        writer.add_annotation(page_number=0, annotation=annotation)
-
+        widget = _text_widget(name, (50, 750 - idx * 30, 300, 770 - idx * 30))
+        fields.append(widget)
     for idx, name in enumerate(CHECKBOX_FIELDS):
-        annotation = AnnotationBuilder.checkbox(
-            rect=(350, 750 - idx * 20, 365, 765 - idx * 20), field_name=name
-        )
-        writer.add_annotation(page_number=0, annotation=annotation)
+        widget = _checkbox_widget(name, (350, 750 - idx * 20, 365, 765 - idx * 20))
+        fields.append(widget)
 
+    page[NameObject("/Annots")] = ArrayObject(fields)
+
+    writer._root_object.update(
+        {
+            NameObject("/AcroForm"): writer._add_object(
+                DictionaryObject(
+                    {
+                        NameObject("/Fields"): ArrayObject([writer._add_object(f) for f in fields]),
+                        NameObject("/NeedAppearances"): BooleanObject(True),
+                    }
+                )
+            )
+        }
+    )
     writer.write(path)
 
 

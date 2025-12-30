@@ -23,7 +23,8 @@ class BDCApp:
         self.selected_files: list[Path] = []
 
         self._build_ui()
-        self._log("Prêt. Sélectionnez un devis SRX.")
+        self._log(f"Prêt. Dossier base: {app_config.get_app_root()}")
+        self._log("Sélectionnez un devis SRX.")
 
     def _build_ui(self) -> None:
         frame = tk.Frame(self.root, padx=10, pady=10)
@@ -102,7 +103,9 @@ class BDCApp:
     def _generate_worker(self) -> None:
         template_path = app_config.resolve_template_path(self.config)
         if not template_path.exists():
-            self._log("Template introuvable. Sélectionnez un template valide.")
+            self._log(
+                f"Template introuvable. Placez 'bon de commande V1.pdf' dans {app_config.get_templates_dir()}."
+            )
             return
 
         output_dir = Path(self.config.get("output_dir", app_config.get_output_dir(self.config)))

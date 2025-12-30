@@ -25,7 +25,6 @@ CRITICAL_FIELDS = {
     "bdc_devis_annee_mois",
     "bdc_ref_affaire",
     "bdc_client_nom",
-    "bdc_montant_fourniture_ht",
 }
 
 

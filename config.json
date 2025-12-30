@@ -1,5 +1,5 @@
 {
-  "depot_adresse": "",
+  "depot_address": "",
   "riaux_blacklist": [
     "BAZOUGES",
     "ACACIAS",
@@ -7,6 +7,8 @@
     "35560",
     "PEROUSE",
     "ALLÉE DES ACACIAS",
-    "ALLEE DES ACACIAS"
+    "ALLEE DES ACACIAS",
+    "VAUGARNY",
+    "BAZOUGES LA PEROUSE"
   ]
 }

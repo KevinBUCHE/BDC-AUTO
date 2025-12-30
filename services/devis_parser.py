@@ -8,6 +8,8 @@ import pdfplumber
 
 SRX_PATTERN = re.compile(r"SRX(\d{4})([A-Z]{3})(\d{6})")
 PRICE_PATTERN = re.compile(r"(\d[\d\s]*,\d{2})")
+CP_VILLE_PATTERN = re.compile(r"\b\d{5}\s+[A-ZÉÈÂÊÎÔÛÄËÏÖÜÀÂÇ\- ]+")
+CLIENT_EXCLUDE = {"sas", "rcs", "naf", "capital"}
 
 
 ANCHORS = {
@@ -65,15 +67,33 @@ def _get_next_line(lines: List[str], index: int) -> str:
 
 
 def _fallback_client(lines: List[str]) -> str:
+    for idx, line in enumerate(lines):
+        if CP_VILLE_PATTERN.search(line):
+            # walk upwards to find a likely client name, skipping metadata lines
+            for up in range(idx - 1, -1, -1):
+                candidate = lines[up].strip()
+                lower = candidate.lower()
+                if any(excl in lower for excl in CLIENT_EXCLUDE):
+                    continue
+                if candidate and not CP_VILLE_PATTERN.search(candidate):
+                    return candidate
     for line in lines:
-        if line.isupper() and len(line.split()) >= 2:
+        if line.isupper() and len(line.split()) >= 2 and not CP_VILLE_PATTERN.search(line):
             return line.strip()
     return ""
 
 
 def _fallback_commercial(lines: List[str]) -> str:
-    for line in lines:
+    for idx, line in enumerate(lines):
         if "commercial" in line.lower():
+            # try next non-empty line that isn't a CP/Ville
+            for next_idx in range(idx + 1, min(len(lines), idx + 3)):
+                candidate = lines[next_idx].strip()
+                if not candidate:
+                    continue
+                if CP_VILLE_PATTERN.search(candidate):
+                    continue
+                return candidate
             return _extract_after_colon(line)
         if "buche" in line.lower():
             return "BUCHE Kevin"
@@ -131,6 +151,12 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
             if "pose" in line.lower():
                 pose_sold = True
                 break
+    if not pose_sold and prestations_ht:
+        digits = prestations_ht.replace(" ", "").replace(",", ".")
+        try:
+            pose_sold = float(digits) > 0
+        except ValueError:
+            pose_sold = False
 
     essence = ""
     finition_marches = ""
