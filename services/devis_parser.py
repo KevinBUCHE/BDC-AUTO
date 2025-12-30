@@ -11,6 +11,9 @@ SRX_PATTERN = re.compile(r"SRX(\d{4})([A-Z]{3})(\d{6})")
 PRICE_PATTERN = re.compile(r"(\d[\d\s]*,\d{2})")
 CP_VILLE_PATTERN = re.compile(r"\b\d{5}\s+[A-ZÉÈÂÊÎÔÛÄËÏÖÜÀÂÇ\- ]+")
 CLIENT_EXCLUDE = {"sas", "rcs", "naf", "capital"}
+REF_AFFAIRE_RE = re.compile(
+    r"(?is)\bref(?:[.\s]*|[ée]f[.\s]*)?[\s]*affaire\b\s*[:\uFE55\uFF1A\u2236\u02D0]?\s*([A-Z0-9][A-Z0-9\-_/ ]{1,30})"
+)
 
 
 ANCHORS = {
@@ -125,27 +128,43 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
     warnings: List[str] = []
 
     joined_text = "\n".join(lines)
+    normalized_joined = joined_text.replace("\u202f", " ").replace(NBSP, " ")
+    normalized_joined = re.sub(r"[ \t]+", " ", normalized_joined)
+
+    ref_affaire = ""
+    match_ref = REF_AFFAIRE_RE.search(normalized_joined)
+    if match_ref:
+        ref_affaire = (match_ref.group(1) or "").strip()
+    else:
+        alt = re.search(
+            r"(?is)\br[ée]f[ée]rence\s*affaire\b\s*[:\uFE55\uFF1A]?\s*([A-Z0-9][A-Z0-9\-_/ ]{1,30})",
+            normalized_joined,
+        )
+        if alt:
+            ref_affaire = (alt.group(1) or "").strip()
+    ref_affaire = ref_affaire.strip(" )]}\u00a0")
+
     srx_match = SRX_PATTERN.search(joined_text)
     devis_full = srx_match.group(0) if srx_match else ""
     if not devis_full:
         warnings.append("Numéro de devis introuvable (SRX...)")
 
-    ref_affaire = ""
-    for idx, line in enumerate(lines):
-        normalized = _norm_text(line)
-        if "ref affaire" in normalized or "reference affaire" in normalized:
-            if ":" in line:
-                ref_affaire = line.split(":", 1)[1].strip()
-            else:
-                tail_match = re.search(r"(?i)\baffaire\b\s*(.+)$", line)
-                ref_affaire = tail_match.group(1).strip() if tail_match else ""
-            if not ref_affaire:
-                for j in range(idx + 1, len(lines)):
-                    nxt = lines[j].strip()
-                    if nxt:
-                        ref_affaire = nxt
-                        break
-            break
+    if not ref_affaire:
+        for idx, line in enumerate(lines):
+            normalized = _norm_text(line)
+            if "ref affaire" in normalized or "reference affaire" in normalized:
+                if ":" in line:
+                    ref_affaire = line.split(":", 1)[1].strip()
+                else:
+                    tail_match = re.search(r"(?i)\baffaire\b\s*(.+)$", line)
+                    ref_affaire = tail_match.group(1).strip() if tail_match else ""
+                if not ref_affaire:
+                    for j in range(idx + 1, len(lines)):
+                        nxt = lines[j].strip()
+                        if nxt:
+                            ref_affaire = nxt
+                            break
+                break
 
     client_index = _find_line(lines, ANCHORS["code_client"])
     client_nom = _get_next_line(lines, client_index) if client_index != -1 else ""
