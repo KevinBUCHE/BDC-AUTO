@@ -27,10 +27,11 @@ def _prepare_acroform(writer: PdfWriter) -> None:
     acroform[NameObject("/NeedAppearances")] = BooleanObject(True)
 
 
-def _checkbox_on_value(annotation: dict) -> NameObject:
-    def _resolve(obj):
-        return obj.get_object() if hasattr(obj, "get_object") else obj
+def _resolve(obj):
+    return obj.get_object() if hasattr(obj, "get_object") else obj
 
+
+def _checkbox_on_value(annotation: dict) -> NameObject:
     ap = _resolve(annotation.get("/AP"))
     if not isinstance(ap, dict):
         return NameObject("/Yes")
@@ -54,9 +55,7 @@ def _set_checkbox(annotation: dict, value: bool) -> None:
         on_value = NameObject("/Yes")
     annotation.update({NameObject("/V"): on_value if value else NameObject("/Off")})
     annotation.update({NameObject("/AS"): on_value if value else NameObject("/Off")})
-    parent = annotation.get("/Parent")
-    if hasattr(parent, "get_object"):
-        parent = parent.get_object()
+    parent = _resolve(annotation.get("/Parent"))
     if isinstance(parent, dict):
         parent.update({NameObject("/V"): on_value if value else NameObject("/Off")})
 
@@ -65,14 +64,30 @@ def _iter_acroform_fields(writer: PdfWriter) -> list[DictionaryObject]:
     acro = writer._root_object.get("/AcroForm")
     if acro is None:
         return []
-    acro = acro.get_object() if hasattr(acro, "get_object") else acro
+    acro = _resolve(acro)
     fields = acro.get("/Fields", [])
     resolved: list[DictionaryObject] = []
     for field in fields:
-        obj = field.get_object() if hasattr(field, "get_object") else field
+        obj = _resolve(field)
         if isinstance(obj, DictionaryObject):
             resolved.append(obj)
     return resolved
+
+
+def _manual_fill_text_fields(writer: PdfWriter, updates: Dict[str, str]) -> None:
+    for page in writer.pages:
+        annotations = page.get("/Annots", [])
+        for annotation_ref in annotations:
+            annotation = _resolve(annotation_ref)
+            if not isinstance(annotation, DictionaryObject):
+                continue
+            if annotation.get("/Subtype") != NameObject("/Widget"):
+                continue
+            field_name = annotation.get("/T")
+            key = str(field_name) if field_name else ""
+            if key in updates:
+                annotation[NameObject("/V")] = TextStringObject(updates[key])
+                annotation[NameObject("/DV")] = TextStringObject(updates[key])
 
 
 def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) -> List[str]:
@@ -103,13 +118,14 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
         key = str(name) if name else ""
         if key and key in text_updates:
             field[NameObject("/V")] = TextStringObject(text_updates[key])
+            field[NameObject("/DV")] = TextStringObject(text_updates[key])
         if key and key in checkbox_updates:
             _set_checkbox(field, checkbox_updates[key])
 
     for page in writer.pages:
         annotations = page.get("/Annots", [])
         for annotation_ref in annotations:
-            annotation = annotation_ref.get_object() if hasattr(annotation_ref, "get_object") else annotation_ref
+            annotation = _resolve(annotation_ref)
             if not isinstance(annotation, DictionaryObject):
                 continue
             if annotation.get("/Subtype") != NameObject("/Widget"):
@@ -118,11 +134,12 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
             key = str(field_name) if field_name else ""
             if key in text_updates:
                 annotation[NameObject("/V")] = TextStringObject(text_updates[key])
+                annotation[NameObject("/DV")] = TextStringObject(text_updates[key])
             if key in checkbox_updates:
                 try:
                     _set_checkbox(annotation, checkbox_updates[key])
-                except Exception:
-                    warnings.append(f"Checkbox {key or '<sans nom>'} fallback sans /AP")
+                except Exception as exc:
+                    warnings.append(f"Checkbox {key or '<sans nom>'} fallback sans /AP: {exc}")
 
     for checkbox_name in checkbox_updates:
         if checkbox_name not in form_fields:
