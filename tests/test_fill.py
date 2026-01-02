@@ -5,6 +5,7 @@ from pypdf.generic import ArrayObject, BooleanObject, DictionaryObject, NameObje
 from pypdf.generic import RectangleObject, TextStringObject
 
 from services import bdc_filler
+from services.bdc_filler import safe_extract_field_values
 
 
 TEXT_FIELDS = [
@@ -138,13 +139,13 @@ def test_fill_populates_fields(tmp_path: Path):
     assert isinstance(warnings, list)
 
     reader = PdfReader(str(output_path))
-    fields = reader.get_fields()
+    fields = safe_extract_field_values(reader)
 
     for key in TEXT_FIELDS:
-        assert fields[key]["/V"]
+        assert fields[key]
 
-    assert fields["bdc_chk_autoliquidation"]["/V"] == fields["bdc_chk_livraison_poseur"]["/V"]
-    assert fields["bdc_chk_livraison_client"]["/V"] != fields["bdc_chk_livraison_poseur"]["/V"]
+    assert fields["bdc_chk_autoliquidation"] == fields["bdc_chk_livraison_poseur"]
+    assert fields["bdc_chk_livraison_client"] != fields["bdc_chk_livraison_poseur"]
 
 
 def test_fill_checkbox_without_ap_does_not_crash(tmp_path: Path):
@@ -161,5 +162,5 @@ def test_fill_checkbox_without_ap_does_not_crash(tmp_path: Path):
     assert isinstance(warnings, list)
 
     reader = PdfReader(str(output_path))
-    fields = reader.get_fields()
-    assert fields["bdc_chk_autoliquidation"]["/V"] != NameObject("/Off")
+    fields = safe_extract_field_values(reader)
+    assert fields["bdc_chk_autoliquidation"] != NameObject("/Off")
