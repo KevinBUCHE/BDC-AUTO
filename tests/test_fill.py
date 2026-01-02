@@ -60,6 +60,19 @@ def _checkbox_widget_without_ap(field_name: str, rect: tuple[float, float, float
     return widget
 
 
+def _broken_checkbox(field_name: str, rect: tuple[float, float, float, float]) -> DictionaryObject:
+    widget = DictionaryObject(
+        {
+            NameObject("/FT"): NameObject("/Btn"),
+            NameObject("/T"): TextStringObject(field_name),
+            NameObject("/Rect"): RectangleObject(rect),
+            NameObject("/Subtype"): NameObject("/Widget"),
+            NameObject("/Type"): NameObject("/Annot"),
+        }
+    )
+    return widget
+
+
 def _create_template(path: Path) -> None:
     writer = PdfWriter()
     page = writer.add_blank_page(width=612, height=792)
@@ -98,6 +111,7 @@ def _create_template_without_ap_checkbox(path: Path) -> None:
 
     checkbox = _checkbox_widget_without_ap("bdc_chk_autoliquidation", (350, 750, 365, 765))
     fields.append(checkbox)
+    fields.append(_broken_checkbox("CheckBox", (400, 720, 415, 735)))
 
     page[NameObject("/Annots")] = ArrayObject(fields)
 

@@ -107,6 +107,7 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
     text_updates: Dict[str, str] = {}
     checkbox_updates: Dict[str, bool] = {}
     found_names: set[str] = set()
+    allowed_fields = set(key for key in data.keys() if isinstance(key, str) and key.startswith("bdc_"))
 
     for key, value in data.items():
         if key == "pose_sold":
@@ -127,6 +128,8 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
             field, widget = _get_field_and_widget(annotation)
             key = _field_name_any(field) or _field_name_any(widget)
             if not key:
+                continue
+            if key not in allowed_fields and key not in text_updates and key not in checkbox_updates:
                 continue
             found_names.add(key)
             if key in text_updates:
