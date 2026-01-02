@@ -52,59 +52,32 @@ def _get_field_and_widget(annot: DictionaryObject) -> tuple[DictionaryObject, Di
     return field, widget
 
 
-def _iter_acroform_fields(writer: PdfWriter) -> list[DictionaryObject]:
-    acro = writer._root_object.get("/AcroForm")
-    if acro is None:
-        return []
-    acro = _resolve(acro)
-    fields = acro.get("/Fields", [])
-    resolved: list[DictionaryObject] = []
-    for field in fields:
-        obj = _resolve(field)
-        if isinstance(obj, DictionaryObject):
-            resolved.append(obj)
-    return resolved
-
-
-def _manual_fill_text_fields(writer: PdfWriter, updates: Dict[str, str]) -> None:
-    for page in writer.pages:
-        annotations = page.get("/Annots", [])
-        for annotation_ref in annotations:
-            annotation = _resolve(annotation_ref)
-            if not isinstance(annotation, DictionaryObject):
-                continue
-            if annotation.get("/Subtype") != NameObject("/Widget"):
-                continue
-            key = _field_name(annotation)
-            if key in updates:
-                val = TextStringObject(updates[key])
-                annotation[NameObject("/V")] = val
-                annotation[NameObject("/DV")] = val
-                parent = _resolve(annotation.get("/Parent"))
-                if isinstance(parent, dict):
-                    parent[NameObject("/V")] = val
-                    parent[NameObject("/DV")] = val
+def iter_widgets(reader_or_writer) -> List[DictionaryObject]:
+    widgets: List[DictionaryObject] = []
+    for page in reader_or_writer.pages:
+        for annot_ref in page.get("/Annots", []):
+            annot = _resolve(annot_ref)
+            if isinstance(annot, DictionaryObject) and annot.get("/Subtype") == NameObject("/Widget"):
+                widgets.append(annot)
+    return widgets
 
 
 def _checkbox_states(widget: DictionaryObject) -> tuple[NameObject, NameObject, bool]:
     warning = False
     off_state = NameObject("/Off")
     on_state: NameObject | None = None
-    try:
-        ap = _resolve(widget.get("/AP"))
-        if isinstance(ap, dict):
-            n_dict = _resolve(ap.get("/N"))
-            if isinstance(n_dict, dict):
-                for key in n_dict.keys():
-                    name_key = key if isinstance(key, NameObject) else NameObject(str(key))
-                    if name_key != off_state:
-                        on_state = name_key
-                        break
-            else:
-                warning = True
+    ap = _resolve(widget.get("/AP"))
+    if isinstance(ap, dict):
+        n_dict = _resolve(ap.get("/N"))
+        if isinstance(n_dict, dict):
+            for key in n_dict.keys():
+                key_name = key if isinstance(key, NameObject) else NameObject(str(key))
+                if key_name != off_state:
+                    on_state = key_name
+                    break
         else:
             warning = True
-    except Exception:
+    else:
         warning = True
     if on_state is None:
         on_state = NameObject("/Yes")
@@ -113,19 +86,13 @@ def _checkbox_states(widget: DictionaryObject) -> tuple[NameObject, NameObject, 
 
 def safe_extract_field_values(reader: PdfReader) -> Dict[str, object]:
     values: Dict[str, object] = {}
-    for page in reader.pages:
-        for annot_ref in page.get("/Annots", []):
-            annot = _resolve(annot_ref)
-            if not isinstance(annot, DictionaryObject):
-                continue
-            if annot.get("/Subtype") != NameObject("/Widget"):
-                continue
-            field, widget = _get_field_and_widget(annot)
-            name = _field_name_any(field) or _field_name_any(widget)
-            if not name:
-                continue
-            val = field.get("/V") or widget.get("/V")
-            values[name] = val
+    for widget in iter_widgets(reader):
+        field, resolved_widget = _get_field_and_widget(widget)
+        name = _field_name_any(field) or _field_name_any(resolved_widget)
+        if not name:
+            continue
+        val = field.get("/V") or resolved_widget.get("/V")
+        values[name] = val
     return values
 
 
@@ -136,8 +103,6 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
     writer = PdfWriter()
     writer.clone_reader_document_root(reader)
     _prepare_acroform(writer)
-
-    form_fields = reader.get_fields() or {}
 
     text_updates: Dict[str, str] = {}
     checkbox_updates: Dict[str, bool] = {}
@@ -166,31 +131,25 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
             found_names.add(key)
             if key in text_updates:
                 val = TextStringObject(text_updates[key])
-                try:
-                    writer.update_page_form_field_values(page, {key: text_updates[key]}, auto_regenerate=False)
-                except Exception:
-                    field[NameObject("/V")] = val
-                    field[NameObject("/DV")] = val
-                    widget[NameObject("/V")] = val
-                    widget[NameObject("/DV")] = val
+                field[NameObject("/V")] = val
+                field[NameObject("/DV")] = val
+                widget[NameObject("/V")] = val
+                widget[NameObject("/DV")] = val
             if key in checkbox_updates:
                 on, off, state_warning = _checkbox_states(widget)
                 if state_warning:
                     warnings.append(f"Checkbox {key} sans /AP /N: fallback état {on}")
                 v = on if checkbox_updates[key] else off
-                try:
-                    field[NameObject("/V")] = v
-                    widget[NameObject("/V")] = v
-                    widget[NameObject("/AS")] = v
-                    kids = field.get("/Kids")
-                    if kids:
-                        for kid_ref in kids:
-                            kid = _resolve(kid_ref)
-                            if isinstance(kid, DictionaryObject):
-                                kid[NameObject("/AS")] = v
-                                kid[NameObject("/V")] = v
-                except Exception as exc:
-                    warnings.append(f"Checkbox {key or '<sans nom>'} fallback écriture directe: {exc}")
+                field[NameObject("/V")] = v
+                widget[NameObject("/V")] = v
+                widget[NameObject("/AS")] = v
+                kids = field.get("/Kids")
+                if kids:
+                    for kid_ref in kids:
+                        kid = _resolve(kid_ref)
+                        if isinstance(kid, DictionaryObject):
+                            kid[NameObject("/AS")] = v
+                            kid[NameObject("/V")] = v
 
     found_names = set()
     for page in writer.pages:
