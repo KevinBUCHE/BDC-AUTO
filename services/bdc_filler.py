@@ -31,33 +31,16 @@ def _resolve(obj):
     return obj.get_object() if hasattr(obj, "get_object") else obj
 
 
-def _checkbox_on_value(annotation: dict) -> NameObject:
-    try:
-        ap = _resolve(annotation.get("/AP"))
-        if isinstance(ap, dict):
-            n_dict = _resolve(ap.get("/N"))
-            if isinstance(n_dict, dict):
-                for key in n_dict.keys():
-                    name_key = NameObject(key)
-                    if name_key != NameObject("/Off"):
-                        return name_key
-    except Exception:
-        pass
-    return NameObject("/Yes")
-
-
-def _set_checkbox(annotation: dict, value: bool) -> None:
-    on_value = NameObject("/Yes")
-    off_value = NameObject("/Off")
-    try:
-        on_value = _checkbox_on_value(annotation)
-    except Exception:
-        on_value = NameObject("/Yes")
-    annotation[NameObject("/V")] = on_value if value else off_value
-    annotation[NameObject("/AS")] = on_value if value else off_value
+def _field_name(annotation: DictionaryObject) -> str:
+    name = annotation.get("/T")
+    if name:
+        return str(name)
     parent = _resolve(annotation.get("/Parent"))
     if isinstance(parent, dict):
-        parent[NameObject("/V")] = on_value if value else off_value
+        pname = parent.get("/T")
+        if pname:
+            return str(pname)
+    return ""
 
 
 def _iter_acroform_fields(writer: PdfWriter) -> list[DictionaryObject]:
@@ -111,17 +94,6 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
         elif key.startswith("bdc_"):
             text_updates[key] = "" if value is None else str(value)
 
-    acro_fields = _iter_acroform_fields(writer)
-
-    for field in acro_fields:
-        name = field.get("/T")
-        key = str(name) if name else ""
-        if key and key in text_updates:
-            field[NameObject("/V")] = TextStringObject(text_updates[key])
-            field[NameObject("/DV")] = TextStringObject(text_updates[key])
-        if key and key in checkbox_updates:
-            _set_checkbox(field, checkbox_updates[key])
-
     for page in writer.pages:
         annotations = page.get("/Annots", [])
         for annotation_ref in annotations:
@@ -130,20 +102,35 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
                 continue
             if annotation.get("/Subtype") != NameObject("/Widget"):
                 continue
-            field_name = annotation.get("/T")
-            key = str(field_name) if field_name else ""
+            key = _field_name(annotation)
+            if not key:
+                continue
+            ft = annotation.get("/FT")
+            if not ft:
+                parent = _resolve(annotation.get("/Parent"))
+                if isinstance(parent, dict):
+                    ft = parent.get("/FT")
+
             if key in text_updates:
-                try:
-                    # prefer pypdf helper, fallback manual
-                    writer.update_page_form_field_values(
-                        page, {key: text_updates[key]}, auto_regenerate=False
-                    )
-                except Exception:
-                    annotation[NameObject("/V")] = TextStringObject(text_updates[key])
-                    annotation[NameObject("/DV")] = TextStringObject(text_updates[key])
+                val = TextStringObject(text_updates[key])
+                annotation[NameObject("/V")] = val
+                annotation[NameObject("/DV")] = val
+                parent = _resolve(annotation.get("/Parent"))
+                if isinstance(parent, dict):
+                    parent[NameObject("/V")] = val
+                    parent[NameObject("/DV")] = val
+
             if key in checkbox_updates:
+                on = NameObject("/Yes")
+                off = NameObject("/Off")
+                v = on if checkbox_updates[key] else off
                 try:
-                    _set_checkbox(annotation, checkbox_updates[key])
+                    annotation[NameObject("/V")] = v
+                    annotation[NameObject("/AS")] = v
+                    parent = _resolve(annotation.get("/Parent"))
+                    if isinstance(parent, dict):
+                        parent[NameObject("/V")] = v
+                        parent[NameObject("/AS")] = v
                 except Exception as exc:
                     warnings.append(f"Checkbox {key or '<sans nom>'} fallback sans /AP: {exc}")
 
