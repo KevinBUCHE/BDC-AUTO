@@ -31,6 +31,10 @@ def _resolve(obj):
     return obj.get_object() if hasattr(obj, "get_object") else obj
 
 
+def _resolve(obj):
+    return obj.get_object() if hasattr(obj, "get_object") else obj
+
+
 def _field_name(annotation: DictionaryObject) -> str:
     name = annotation.get("/T")
     if name:
@@ -66,11 +70,15 @@ def _manual_fill_text_fields(writer: PdfWriter, updates: Dict[str, str]) -> None
                 continue
             if annotation.get("/Subtype") != NameObject("/Widget"):
                 continue
-            field_name = annotation.get("/T")
-            key = str(field_name) if field_name else ""
+            key = _field_name(annotation)
             if key in updates:
-                annotation[NameObject("/V")] = TextStringObject(updates[key])
-                annotation[NameObject("/DV")] = TextStringObject(updates[key])
+                val = TextStringObject(updates[key])
+                annotation[NameObject("/V")] = val
+                annotation[NameObject("/DV")] = val
+                parent = _resolve(annotation.get("/Parent"))
+                if isinstance(parent, dict):
+                    parent[NameObject("/V")] = val
+                    parent[NameObject("/DV")] = val
 
 
 def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) -> List[str]:
@@ -105,21 +113,11 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
             key = _field_name(annotation)
             if not key:
                 continue
-            ft = annotation.get("/FT")
-            if not ft:
-                parent = _resolve(annotation.get("/Parent"))
-                if isinstance(parent, dict):
-                    ft = parent.get("/FT")
-
             if key in text_updates:
-                val = TextStringObject(text_updates[key])
-                annotation[NameObject("/V")] = val
-                annotation[NameObject("/DV")] = val
-                parent = _resolve(annotation.get("/Parent"))
-                if isinstance(parent, dict):
-                    parent[NameObject("/V")] = val
-                    parent[NameObject("/DV")] = val
-
+                try:
+                    writer.update_page_form_field_values(page, {key: text_updates[key]}, auto_regenerate=False)
+                except Exception:
+                    _manual_fill_text_fields(writer, {key: text_updates[key]})
             if key in checkbox_updates:
                 on = NameObject("/Yes")
                 off = NameObject("/Off")
@@ -134,12 +132,25 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
                 except Exception as exc:
                     warnings.append(f"Checkbox {key or '<sans nom>'} fallback sans /AP: {exc}")
 
+    found_names = set()
+    for page in writer.pages:
+        annotations = page.get("/Annots", [])
+        for annotation_ref in annotations:
+            annotation = _resolve(annotation_ref)
+            if not isinstance(annotation, DictionaryObject):
+                continue
+            if annotation.get("/Subtype") != NameObject("/Widget"):
+                continue
+            key = _field_name(annotation)
+            if key:
+                found_names.add(key)
+
     for checkbox_name in checkbox_updates:
-        if checkbox_name not in form_fields:
+        if checkbox_name not in found_names:
             warnings.append(f"Champ checkbox absent dans le template: {checkbox_name}")
 
     for text_name in text_updates:
-        if text_name not in form_fields:
+        if text_name not in found_names:
             warnings.append(f"Champ texte absent dans le template: {text_name}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
