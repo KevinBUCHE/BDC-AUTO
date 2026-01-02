@@ -32,32 +32,32 @@ def _resolve(obj):
 
 
 def _checkbox_on_value(annotation: dict) -> NameObject:
-    ap = _resolve(annotation.get("/AP"))
-    if not isinstance(ap, dict):
-        return NameObject("/Yes")
-    n_dict = _resolve(ap.get("/N"))
-    if not isinstance(n_dict, dict):
-        return NameObject("/Yes")
-    for key in n_dict.keys():
-        try:
-            name_key = NameObject(key)
-        except Exception:
-            continue
-        if name_key != NameObject("/Off"):
-            return name_key
+    try:
+        ap = _resolve(annotation.get("/AP"))
+        if isinstance(ap, dict):
+            n_dict = _resolve(ap.get("/N"))
+            if isinstance(n_dict, dict):
+                for key in n_dict.keys():
+                    name_key = NameObject(key)
+                    if name_key != NameObject("/Off"):
+                        return name_key
+    except Exception:
+        pass
     return NameObject("/Yes")
 
 
 def _set_checkbox(annotation: dict, value: bool) -> None:
+    on_value = NameObject("/Yes")
+    off_value = NameObject("/Off")
     try:
         on_value = _checkbox_on_value(annotation)
     except Exception:
         on_value = NameObject("/Yes")
-    annotation.update({NameObject("/V"): on_value if value else NameObject("/Off")})
-    annotation.update({NameObject("/AS"): on_value if value else NameObject("/Off")})
+    annotation[NameObject("/V")] = on_value if value else off_value
+    annotation[NameObject("/AS")] = on_value if value else off_value
     parent = _resolve(annotation.get("/Parent"))
     if isinstance(parent, dict):
-        parent.update({NameObject("/V"): on_value if value else NameObject("/Off")})
+        parent[NameObject("/V")] = on_value if value else off_value
 
 
 def _iter_acroform_fields(writer: PdfWriter) -> list[DictionaryObject]:
@@ -133,8 +133,14 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
             field_name = annotation.get("/T")
             key = str(field_name) if field_name else ""
             if key in text_updates:
-                annotation[NameObject("/V")] = TextStringObject(text_updates[key])
-                annotation[NameObject("/DV")] = TextStringObject(text_updates[key])
+                try:
+                    # prefer pypdf helper, fallback manual
+                    writer.update_page_form_field_values(
+                        page, {key: text_updates[key]}, auto_regenerate=False
+                    )
+                except Exception:
+                    annotation[NameObject("/V")] = TextStringObject(text_updates[key])
+                    annotation[NameObject("/DV")] = TextStringObject(text_updates[key])
             if key in checkbox_updates:
                 try:
                     _set_checkbox(annotation, checkbox_updates[key])
