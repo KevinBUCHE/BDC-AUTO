@@ -51,6 +51,14 @@ def _checkbox_widget(field_name: str, rect: tuple[float, float, float, float]) -
     )
 
 
+def _checkbox_widget_without_ap(field_name: str, rect: tuple[float, float, float, float]) -> DictionaryObject:
+    widget = _checkbox_widget(field_name, rect)
+    # Remove appearances to simulate templates lacking /AP or /N
+    if "/AP" in widget:
+        del widget[NameObject("/AP")]
+    return widget
+
+
 def _create_template(path: Path) -> None:
     writer = PdfWriter()
     page = writer.add_blank_page(width=612, height=792)
@@ -63,6 +71,32 @@ def _create_template(path: Path) -> None:
     for idx, name in enumerate(CHECKBOX_FIELDS):
         widget = _checkbox_widget(name, (350, 750 - idx * 20, 365, 765 - idx * 20))
         fields.append(widget)
+
+    page[NameObject("/Annots")] = ArrayObject(fields)
+
+    writer._root_object.update(
+        {
+            NameObject("/AcroForm"): writer._add_object(
+                DictionaryObject(
+                    {
+                        NameObject("/Fields"): ArrayObject([writer._add_object(f) for f in fields]),
+                        NameObject("/NeedAppearances"): BooleanObject(True),
+                    }
+                )
+            )
+        }
+    )
+    writer.write(path)
+
+
+def _create_template_without_ap_checkbox(path: Path) -> None:
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+
+    fields: list[DictionaryObject] = []
+
+    checkbox = _checkbox_widget_without_ap("bdc_chk_autoliquidation", (350, 750, 365, 765))
+    fields.append(checkbox)
 
     page[NameObject("/Annots")] = ArrayObject(fields)
 
@@ -111,3 +145,21 @@ def test_fill_populates_fields(tmp_path: Path):
 
     assert fields["bdc_chk_autoliquidation"]["/V"] == fields["bdc_chk_livraison_poseur"]["/V"]
     assert fields["bdc_chk_livraison_client"]["/V"] != fields["bdc_chk_livraison_poseur"]["/V"]
+
+
+def test_fill_checkbox_without_ap_does_not_crash(tmp_path: Path):
+    template_path = tmp_path / "template_no_ap.pdf"
+    output_path = tmp_path / "output_no_ap.pdf"
+
+    _create_template_without_ap_checkbox(template_path)
+
+    data = {
+        "bdc_chk_autoliquidation": True,
+    }
+
+    warnings = bdc_filler.fill_bdc(template_path, output_path, data)
+    assert isinstance(warnings, list)
+
+    reader = PdfReader(str(output_path))
+    fields = reader.get_fields()
+    assert fields["bdc_chk_autoliquidation"]["/V"] != NameObject("/Off")

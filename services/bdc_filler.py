@@ -29,7 +29,7 @@ def _prepare_acroform(writer: PdfWriter) -> None:
 
 def _checkbox_on_value(annotation: dict) -> NameObject:
     def _resolve(obj):
-        return obj.get_object() if isinstance(obj, IndirectObject) else obj
+        return obj.get_object() if hasattr(obj, "get_object") else obj
 
     ap = _resolve(annotation.get("/AP"))
     if not isinstance(ap, dict):
@@ -48,11 +48,14 @@ def _checkbox_on_value(annotation: dict) -> NameObject:
 
 
 def _set_checkbox(annotation: dict, value: bool) -> None:
-    on_value = _checkbox_on_value(annotation)
+    try:
+        on_value = _checkbox_on_value(annotation)
+    except Exception:
+        on_value = NameObject("/Yes")
     annotation.update({NameObject("/V"): on_value if value else NameObject("/Off")})
     annotation.update({NameObject("/AS"): on_value if value else NameObject("/Off")})
     parent = annotation.get("/Parent")
-    if isinstance(parent, IndirectObject):
+    if hasattr(parent, "get_object"):
         parent = parent.get_object()
     if isinstance(parent, dict):
         parent.update({NameObject("/V"): on_value if value else NameObject("/Off")})
@@ -116,7 +119,10 @@ def fill_bdc(template_path: Path, output_path: Path, data: Dict[str, object]) ->
             if key in text_updates:
                 annotation[NameObject("/V")] = TextStringObject(text_updates[key])
             if key in checkbox_updates:
-                _set_checkbox(annotation, checkbox_updates[key])
+                try:
+                    _set_checkbox(annotation, checkbox_updates[key])
+                except Exception:
+                    warnings.append(f"Checkbox {key or '<sans nom>'} fallback sans /AP")
 
     for checkbox_name in checkbox_updates:
         if checkbox_name not in form_fields:
