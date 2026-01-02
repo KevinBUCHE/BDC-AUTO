@@ -222,7 +222,16 @@ def parse_devis(pdf_path: Path) -> ParsedDevis:
         warnings.append("Nom client estimé par fallback")
 
     commercial_index = _find_line(lines, ANCHORS["contact"])
-    commercial_nom = _get_next_line(lines, commercial_index) if commercial_index != -1 else ""
+    commercial_nom = ""
+    if commercial_index != -1:
+        for idx in range(commercial_index + 1, min(len(lines), commercial_index + 6)):
+            cand = lines[idx].strip()
+            if not cand:
+                continue
+            if CP_VILLE_PATTERN.search(cand):
+                continue
+            commercial_nom = cand
+            break
     if not commercial_nom:
         commercial_nom = _fallback_commercial(lines)
         warnings.append("Commercial estimé par fallback")

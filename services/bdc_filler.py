@@ -28,10 +28,22 @@ def _prepare_acroform(writer: PdfWriter) -> None:
 
 
 def _checkbox_on_value(annotation: dict) -> NameObject:
-    appearances = annotation.get("/AP", {}).get("/N", {})
-    for key in appearances.keys():
-        if key != NameObject("/Off"):
-            return NameObject(key)
+    def _resolve(obj):
+        return obj.get_object() if isinstance(obj, IndirectObject) else obj
+
+    ap = _resolve(annotation.get("/AP"))
+    if not isinstance(ap, dict):
+        return NameObject("/Yes")
+    n_dict = _resolve(ap.get("/N"))
+    if not isinstance(n_dict, dict):
+        return NameObject("/Yes")
+    for key in n_dict.keys():
+        try:
+            name_key = NameObject(key)
+        except Exception:
+            continue
+        if name_key != NameObject("/Off"):
+            return name_key
     return NameObject("/Yes")
 
 
@@ -39,6 +51,11 @@ def _set_checkbox(annotation: dict, value: bool) -> None:
     on_value = _checkbox_on_value(annotation)
     annotation.update({NameObject("/V"): on_value if value else NameObject("/Off")})
     annotation.update({NameObject("/AS"): on_value if value else NameObject("/Off")})
+    parent = annotation.get("/Parent")
+    if isinstance(parent, IndirectObject):
+        parent = parent.get_object()
+    if isinstance(parent, dict):
+        parent.update({NameObject("/V"): on_value if value else NameObject("/Off")})
 
 
 def _iter_acroform_fields(writer: PdfWriter) -> list[DictionaryObject]:
